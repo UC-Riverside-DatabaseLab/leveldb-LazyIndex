@@ -10,7 +10,12 @@
 #include "db/dbformat.h"
 #include "db/skiplist.h"
 #include "util/arena.h"
+#include "rapidjson/document.h"
+#include <sstream>
+#include <fstream>
 
+#define SSTR( x ) dynamic_cast< std::ostringstream & >( \
+        ( std::ostringstream() << std::dec << x ) ).str()
 namespace leveldb {
 
 class InternalKeyComparator;
@@ -21,7 +26,7 @@ class MemTable {
  public:
   // MemTables are reference counted.  The initial reference count
   // is zero and the caller must call Ref() at least once.
-  explicit MemTable(const InternalKeyComparator& comparator);
+  explicit MemTable(const InternalKeyComparator& comparator, bool isSecondaryDB);
 
   // Increase reference count.
   void Ref() { ++refs_; }
@@ -81,6 +86,9 @@ class MemTable {
   Arena arena_;
   Table table_;
 
+  //Check whether its the index table
+  bool isSecondaryDB;
+  
   // No copying allowed
   MemTable(const MemTable&);
   void operator=(const MemTable&);

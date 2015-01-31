@@ -18,10 +18,11 @@ static Slice GetLengthPrefixedSlice(const char* data) {
   return Slice(p, len);
 }
 
-MemTable::MemTable(const InternalKeyComparator& cmp)
+MemTable::MemTable(const InternalKeyComparator& cmp, bool isSecondarydb)
     : comparator_(cmp),
       refs_(0),
       table_(comparator_, &arena_) {
+    this->isSecondaryDB = isSecondarydb;
 }
 
 MemTable::~MemTable() {
@@ -78,31 +79,136 @@ class MemTableIterator: public Iterator {
 Iterator* MemTable::NewIterator() {
   return new MemTableIterator(&table_);
 }
+std::string M_GetVal(const rapidjson::Value& val) {
 
+  std::ostringstream pKey;
+
+  if(val.IsNumber()) {
+    if(val.IsUint64()) {
+      unsigned long long int tid = val.GetUint64();
+      pKey<<tid;
+    }
+    else if (val.IsInt64()) {
+      long long int tid = val.GetInt64();
+      pKey<<tid;
+    }
+    else if (val.IsDouble()) {
+      double tid = val.GetDouble();
+      pKey<<tid;
+    }
+    else if (val.IsUint()) {
+      unsigned int tid = val.GetUint();
+      pKey<<tid;
+    }
+    else if (val.IsInt()) {
+      int tid = val.GetInt();
+      pKey<<tid;
+    }
+  }
+  else if (val.IsString()) {
+    const char* tid = val.GetString();
+    pKey<<tid;
+  }
+  else if(val.IsBool()) {
+    bool tid = val.GetBool();
+    pKey<<tid;
+  }
+
+  return pKey.str();
+}
 void MemTable::Add(SequenceNumber s, ValueType type,
                    const Slice& key,
-                   const Slice& value) {
+                   const Slice& rawvalue) {
   // Format of an entry is concatenation of:
   //  key_size     : varint32 of internal_key.size()
   //  key bytes    : char[internal_key.size()]
   //  value_size   : varint32 of value.size()
   //  value bytes  : char[value.size()]
-  size_t key_size = key.size();
-  size_t val_size = value.size();
-  size_t internal_key_size = key_size + 8;
-  const size_t encoded_len =
-      VarintLength(internal_key_size) + internal_key_size +
-      VarintLength(val_size) + val_size;
-  char* buf = arena_.Allocate(encoded_len);
-  char* p = EncodeVarint32(buf, internal_key_size);
-  memcpy(p, key.data(), key_size);
-  p += key_size;
-  EncodeFixed64(p, (s << 8) | type);
-  p += 8;
-  p = EncodeVarint32(p, val_size);
-  memcpy(p, value.data(), val_size);
-  assert((p + val_size) - buf == encoded_len);
-  table_.Insert(buf);
+    
+  //For seq number insertion in index table
+    
+  if(this->isSecondaryDB)
+  {
+    //std::ofstream outputFile;  
+    //outputFile.open("/home/mohiuddin/Desktop/LevelDB_Correctness_Testing/Debug/lazy_debug_RangeLookUp.txt", std::ofstream::out | std::ofstream::app);
+    
+    //<<"raw: "<<rawvalue.data()<"\n";
+      
+    rapidjson::Document key_list;
+    key_list.Parse<0>(rawvalue.data());
+
+ 
+
+    std::string new_key_list = "[";
+    //rapidjson::SizeType j = 0;
+
+    
+    for (rapidjson::SizeType i = 0; i < key_list.Size(); i++)
+    {       
+        if (i != 0)
+        {
+          new_key_list += ",";
+          
+        
+        }
+        if(i==key_list.Size()-1)
+         
+            new_key_list += ("\"" + SSTR(s) +"+"+ M_GetVal(key_list[i]) + "\"");
+        else            
+            new_key_list += ("\"" + M_GetVal(key_list[i]) + "\"");
+        
+         
+        
+    }  
+      
+    new_key_list += "]";
+          
+    Slice value = new_key_list;
+  
+    size_t key_size = key.size();
+    size_t val_size = value.size();
+    size_t internal_key_size = key_size + 8;
+    const size_t encoded_len =
+        VarintLength(internal_key_size) + internal_key_size +
+        VarintLength(val_size) + val_size;
+    char* buf = arena_.Allocate(encoded_len);
+    char* p = EncodeVarint32(buf, internal_key_size);
+    memcpy(p, key.data(), key_size);
+    p += key_size;
+    EncodeFixed64(p, (s << 8) | type);
+    p += 8;
+    p = EncodeVarint32(p, val_size);
+    memcpy(p, value.data(), val_size);
+    assert((p + val_size) - buf == encoded_len);
+    
+    //outputFile<<buf<<"\n";
+    table_.Insert(buf);
+  }
+  else
+  {
+    size_t key_size = key.size();
+    size_t val_size = rawvalue.size();
+    size_t internal_key_size = key_size + 8;
+    const size_t encoded_len =
+        VarintLength(internal_key_size) + internal_key_size +
+        VarintLength(val_size) + val_size;
+    char* buf = arena_.Allocate(encoded_len);
+    char* p = EncodeVarint32(buf, internal_key_size);
+    memcpy(p, key.data(), key_size);
+    p += key_size;
+    EncodeFixed64(p, (s << 8) | type);
+    p += 8;
+    p = EncodeVarint32(p, val_size);
+    memcpy(p, rawvalue.data(), val_size);
+    assert((p + val_size) - buf == encoded_len);
+    table_.Insert(buf);
+  }
+  
+  
+  
+  
+  
+  
 }
 
 bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {

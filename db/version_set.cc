@@ -635,25 +635,37 @@ Status Version::Get( const ReadOptions& options, const LookupKey& k, std::vector
             while (kNoOfOutputs > 0 && (int)i >= 0) {
                 std::string pkey = V_GetVal(key_list[i]);
                 std::string pValue;
-                if(resultSetofKeysFound->find(pkey)==resultSetofKeysFound->end())
+                std::string delim = "+";
+            std::size_t found = pkey.find(delim);
+            
+//                std::string pValue;
+                if (found!=std::string::npos)
                 {
-                    Status db_status = db->Get(options, pkey, &pValue);
+                    char *pEnd;
+                    uint64_t seqN =   std::strtoul(pkey.substr(0, found).c_str(), &pEnd, 0); 
+                    pkey = pkey.substr(found+1);
 
-                    // if there are no errors, push KV pair onto return vector, latest record first
-                    // check for updated values
-                    if (db_status.ok()&&!db_status.IsNotFound()) {
-                        //outputFile<<pkey<<"\n"<<pValue<<"\n";
-                        rapidjson::Document temp_val;
-                        temp_val.Parse<0>(pValue.c_str());
-                        //outputFile<<user_key.ToString()<<" ukey\n"<<secKey.c_str()<<std::endl;
-                        if (user_key.ToString() == V_GetAttr(temp_val, secKey.c_str())) {
-                           // outputFile<<"found3\n";
-                          value->push_back(KeyValuePair(pkey, pValue));
-                          resultSetofKeysFound->insert(pkey);
-                          kNoOfOutputs--;
+                    if(resultSetofKeysFound->find(pkey)==resultSetofKeysFound->end())
+                    {
+
+                        Status db_status = db->Get(options, pkey, &pValue);
+
+                        // if there are no errors, push KV pair onto return vector, latest record first
+                        // check for updated values
+                        if (db_status.ok()&&!db_status.IsNotFound()) {
+                            rapidjson::Document temp_val;
+                            temp_val.Parse<0>(pValue.c_str());
+                            //outputFile<<pkey<<" -> "<<pValue<<"\n"<<skey.ToString()<<" == "<< GetAttr(temp_val, this->options_.secondary_key.c_str())<<"\n";
+                            if (user_key.ToString() == V_GetAttr(temp_val, secKey.c_str()))
+                            {
+                              value->push_back(KeyValuePair(pkey, pValue));
+                              resultSetofKeysFound->insert(pkey);
+                              kNoOfOutputs--;
+                            }
                         }
                     }
                 }
+                 
                 i--;
 
             }
@@ -726,7 +738,182 @@ Status Version::Get( const ReadOptions& options, const LookupKey& k, std::vector
    return s;
 }
 
+ 
+Status Version::RangeGet( const ReadOptions& options, const LookupKey&  k, std::vector<RangeKeyValuePair>* value_list, GetStats* stats, 
+                std::string secKey,   DB* db, std::unordered_set<std::string>* resultSetofKeysFound)
+{
+     
+   int kNoOfOutputs = options.num_records; 
+  Slice ikey = k.internal_key();
+  Slice user_key = k.user_key();
+  const Comparator* ucmp = vset_->icmp_.user_comparator();
+  Status s;
 
+  stats->seek_file = NULL;
+  stats->seek_file_level = -1;
+  FileMetaData* last_file_read = NULL;
+  int last_file_read_level = -1;
+
+  // We can search level-by-level since entries never hop across
+  // levels.  Therefore we are guaranteed that if we find data
+  // in an smaller level, later levels are irrelevant.
+  std::vector<FileMetaData*> tmp;
+  FileMetaData* tmp2;
+  int valueSize = 0;
+  for (int level = 0; level < config::kNumLevels; level++) {
+    size_t num_files = files_[level].size();
+    if (num_files == 0) continue;
+
+    // Get the list of files to search in this level
+    FileMetaData* const* files = &files_[level][0];
+    //if (level == 0) {
+      // Level-0 files may overlap each other.  Find all files that
+      // overlap user_key and process them in order from newest to oldest.
+      tmp.reserve(num_files);
+      for (uint32_t i = 0; i < num_files; i++) {
+        FileMetaData* f = files[i];
+        //if (ucmp->Compare(user_key, f->smallest.user_key()) >= 0 &&
+        //    ucmp->Compare(user_key, f->largest.user_key()) <= 0) {
+          tmp.push_back(f);
+        //}
+      }
+      if (tmp.empty()) continue;
+
+      std::sort(tmp.begin(), tmp.end(), NewestFirst);
+      files = &tmp[0];
+      num_files = tmp.size();
+    
+    std::string val;
+    for (uint32_t i = 0; i < num_files; ++i) {
+      if (last_file_read != NULL && stats->seek_file == NULL) {
+        // We have had more than one seek for this read.  Charge the 1st file.
+        stats->seek_file = last_file_read;
+        stats->seek_file_level = last_file_read_level;
+      }
+
+      FileMetaData* f = files[i];
+      last_file_read = f;
+      last_file_read_level = level;
+ 
+      
+      Saver saver;
+      saver.state = kNotFound;
+      saver.ucmp = ucmp;
+      saver.user_key = user_key;
+      saver.value = &val;
+      s = vset_->table_cache_->Get(options, f->number, f->file_size, ikey, &saver, SaveValue);
+      
+       
+      
+      if(s.ok() & !s.IsNotFound() && saver.state == kFound)
+      {
+      
+
+        rapidjson::Document key_list;
+
+        key_list.Parse<0>(val.c_str());
+        int i = key_list.Size() - 1;
+        //outputFile<<i<<"\n";
+        // read requested number of records from primary db
+
+        while ( i >= 0) 
+        {
+            std::string pkey = V_GetVal(key_list[i]);
+   
+            std::string delim = "+";
+            std::size_t found = pkey.find(delim);
+            
+            std::string pValue;
+            if (found!=std::string::npos)
+            {
+                char *pEnd;
+                uint64_t seqN =   std::strtoul(pkey.substr(0, found).c_str(), &pEnd, 0);;
+                pkey = pkey.substr(found+1);
+
+                struct RangeKeyValuePair newVal;;
+
+                newVal.key = pkey;//Slice(d);
+
+                //newVal.value = sval;//Slice(d2); 
+
+
+                newVal.sequence_number = seqN;
+                if(value_list->size()<kNoOfOutputs)
+                {
+                    if(resultSetofKeysFound->find(pkey)==resultSetofKeysFound->end())
+                    {
+                        Status db_status = db->Get(options, pkey, &pValue);
+                        newVal.value = pValue;
+
+                        // if there are no errors, push KV pair onto return vector, latest record first
+                        // check for updated values
+                        if (db_status.ok()&&!db_status.IsNotFound()) {
+                            rapidjson::Document temp_val;
+                            temp_val.Parse<0>(pValue.c_str());
+                            //outputFile<<pkey<<" -> "<<pValue<<"\n"<<skey.ToString()<<" == "<< GetAttr(temp_val, this->options_.secondary_key.c_str())<<"\n";
+                            if (user_key.ToString() == V_GetAttr(temp_val, secKey.c_str()))
+                            {
+                              newVal.Push(value_list, newVal);                             
+                              resultSetofKeysFound->insert(pkey);
+                               
+                            }
+                        }
+                    }
+                }
+                else if(newVal.sequence_number>value_list->front().sequence_number)
+                {
+                    
+                    if(resultSetofKeysFound->find(pkey)==resultSetofKeysFound->end())
+                    {
+                        Status db_status = db->Get(options, pkey, &pValue);
+                        newVal.value = pValue;
+
+                        // if there are no errors, push KV pair onto return vector, latest record first
+                        // check for updated values
+                        if (db_status.ok()&&!db_status.IsNotFound()) {
+                            rapidjson::Document temp_val;
+                            temp_val.Parse<0>(pValue.c_str());
+                            //outputFile<<pkey<<" -> "<<pValue<<"\n"<<skey.ToString()<<" == "<< GetAttr(temp_val, this->options_.secondary_key.c_str())<<"\n";
+                            if (user_key.ToString() == V_GetAttr(temp_val, secKey.c_str()))
+                            {
+                               newVal.Pop(value_list);
+                               newVal.Push(value_list, newVal);                             
+                               resultSetofKeysFound->insert(pkey);
+                               //resultSetofKeysFound->erase(resultSetofKeysFound->find(value_list->front().key));
+                               
+                               
+                            }
+                        }
+                    }
+                     
+                }
+                
+                
+                
+                
+                
+            }
+            
+            i--;
+        }
+            
+             
+        
+      
+      }
+      
+      
+      
+    }
+    
+  }
+  
+
+
+   return s;
+}
+  
+  
 bool Version::UpdateStats(const GetStats& stats) {
   FileMetaData* f = stats.seek_file;
   if (f != NULL) {

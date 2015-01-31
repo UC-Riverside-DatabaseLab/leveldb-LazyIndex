@@ -137,7 +137,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       db_lock_(NULL),
       shutting_down_(NULL),
       bg_cv_(&mutex_),
-      mem_(new MemTable(internal_comparator_)),
+      mem_(new MemTable(internal_comparator_, options_.isSecondaryDB)),
       imm_(NULL),
       logfile_(NULL),
       logfile_number_(0),
@@ -512,7 +512,7 @@ Status DBImpl::RecoverLogFile(uint64_t log_number,
     WriteBatchInternal::SetContents(&batch, record);
 
     if (mem == NULL) {
-      mem = new MemTable(internal_comparator_);
+      mem = new MemTable(internal_comparator_, options_.isSecondaryDB);
       mem->Ref();
     }
     status = WriteBatchInternal::InsertInto(&batch, mem);
@@ -1672,11 +1672,13 @@ Status DBImpl::Put(const WriteOptions& options, const Slice& value) {
   Status sdb_status;
   std::string new_key_list = "[";
   new_key_list += ("\"" + pkey + "\"]");
-  
+  std::ofstream outputFile;  
+ outputFile.open("/home/mohiuddin/Desktop/LevelDB_Correctness_Testing/Debug/lazy_debug_RangeLookUp.txt", std::ofstream::out | std::ofstream::app);
+    outputFile<<"put "<<skey << " "<<new_key_list<<"\n";
   Slice sk = skey;
   Slice pk = pkey;
-  
-  sdb_status = this->sdb->Put(options, skey, new_key_list);
+  if(!skey.empty())      
+    sdb_status = this->sdb->Put(options, skey, new_key_list);
   
   json_val.RemoveMember(this->options_.primary_key.c_str());
   rapidjson::StringBuffer pstrbuf;
@@ -1744,24 +1746,39 @@ Status DBImpl::SGet(const ReadOptions& options, const Slice& skey, std::vector<K
             std::string pkey = GetVal(mem_key_list[i]);
             std::string pValue;
             
-            if(resultSetofKeysFound.find(pkey)==resultSetofKeysFound.end())
+            std::string delim = "+";
+            std::size_t found = pkey.find(delim);
+            
+            
+            if (found!=std::string::npos)
             {
-                Status db_status = db->Get(options, pkey, &pValue);
+                char *pEnd;
+                uint64_t seqN =   std::strtoul(pkey.substr(0, found).c_str(), &pEnd, 0); 
+                pkey = pkey.substr(found+1);
+                
+                if(resultSetofKeysFound.find(pkey)==resultSetofKeysFound.end())
+                {
 
-                // if there are no errors, push KV pair onto return vector, latest record first
-                // check for updated values
-                if (db_status.ok()&&!db_status.IsNotFound()) {
-                    rapidjson::Document temp_val;
-                    temp_val.Parse<0>(pValue.c_str());
-                    //outputFile<<pkey<<" -> "<<pValue<<"\n"<<skey.ToString()<<" == "<< GetAttr(temp_val, this->options_.secondary_key.c_str())<<"\n";
-                    if (skey.ToString() == GetAttr(temp_val, this->options_.secondary_key.c_str()))
-                    {
-                      value_list->push_back(KeyValuePair(pkey, pValue));
-                      resultSetofKeysFound.insert(pkey);
-                      kNoOfOutputs--;
+                    Status db_status = db->Get(options, pkey, &pValue);
+
+                    // if there are no errors, push KV pair onto return vector, latest record first
+                    // check for updated values
+                    if (db_status.ok()&&!db_status.IsNotFound()) {
+                        rapidjson::Document temp_val;
+                        temp_val.Parse<0>(pValue.c_str());
+                        //outputFile<<pkey<<" -> "<<pValue<<"\n"<<skey.ToString()<<" == "<< GetAttr(temp_val, this->options_.secondary_key.c_str())<<"\n";
+                        if (skey.ToString() == GetAttr(temp_val, this->options_.secondary_key.c_str()))
+                        {
+                          value_list->push_back(KeyValuePair(pkey, pValue));
+                          resultSetofKeysFound.insert(pkey);
+                          kNoOfOutputs--;
+                        }
                     }
                 }
             }
+            
+            
+            
             i--;
 
         }
@@ -1783,19 +1800,33 @@ Status DBImpl::SGet(const ReadOptions& options, const Slice& skey, std::vector<K
             while (kNoOfOutputs>0&& i >= 0) {
                 std::string pkey = GetVal(imm_key_list[i]);
                 std::string pValue;
-                if(resultSetofKeysFound.find(pkey)==resultSetofKeysFound.end())
-                {
-                    Status db_status = db->Get(options, pkey, &pValue);
+                std::string delim = "+";
+                std::size_t found = pkey.find(delim);
 
-                    // if there are no errors, push KV pair onto return vector, latest record first
-                    // check for updated values
-                    if (db_status.ok()&&!db_status.IsNotFound()) {
-                        rapidjson::Document temp_val;
-                        temp_val.Parse<0>(pValue.c_str());
-                        if (skey.ToString() == GetAttr(temp_val, this->options_.secondary_key.c_str())) {
-                          value_list->push_back(KeyValuePair(pkey, pValue));
-                          resultSetofKeysFound.insert(pkey);
-                          kNoOfOutputs--;
+                 
+                if (found!=std::string::npos)
+                {
+                    char *pEnd;
+                    uint64_t seqN =   std::strtoul(pkey.substr(0, found).c_str(), &pEnd, 0); 
+                    pkey = pkey.substr(found+1);
+
+                    if(resultSetofKeysFound.find(pkey)==resultSetofKeysFound.end())
+                    {
+
+                        Status db_status = db->Get(options, pkey, &pValue);
+
+                        // if there are no errors, push KV pair onto return vector, latest record first
+                        // check for updated values
+                        if (db_status.ok()&&!db_status.IsNotFound()) {
+                            rapidjson::Document temp_val;
+                            temp_val.Parse<0>(pValue.c_str());
+                            //outputFile<<pkey<<" -> "<<pValue<<"\n"<<skey.ToString()<<" == "<< GetAttr(temp_val, this->options_.secondary_key.c_str())<<"\n";
+                            if (skey.ToString() == GetAttr(temp_val, this->options_.secondary_key.c_str()))
+                            {
+                              value_list->push_back(KeyValuePair(pkey, pValue));
+                              resultSetofKeysFound.insert(pkey);
+                              kNoOfOutputs--;
+                            }
                         }
                     }
                 }
@@ -1841,7 +1872,297 @@ Status DBImpl::SGet(const ReadOptions& options, const Slice& skey, std::vector<K
  
 }
 
+Status DBImpl::SRangeGet(const ReadOptions& options,
+                     const Slice& skey, std::vector<RangeKeyValuePair>* value_list, DB* db)
+ {
+    
+    
+  Status s;
+  //outputFile<<"innnn\n";
+  MutexLock l(&mutex_);
+  SequenceNumber snapshot;
+  if (options.snapshot != NULL) {
+    snapshot = reinterpret_cast<const SnapshotImpl*>(options.snapshot)->number_;
+  } else {
+    snapshot = versions_->LastSequence();
+  }
+  
+  MemTable* mem = mem_;
+  MemTable* imm = imm_;
+  Version* current = versions_->current();
+  mem->Ref();
+  if (imm != NULL) imm->Ref();
+  current->Ref();
 
+  bool have_stat_update = false;
+  Version::GetStats stats;
+  
+  //outputFile<<"in\n";
+  // Unlock while reading from files and memtables
+  {
+    mutex_.Unlock();
+    // First look in the memtable, then in the immutable memtable (if any).
+    //outputFile<<"in\n";
+    LookupKey lkey(skey, snapshot);
+    //outputFile<<"in\n";
+    
+    rapidjson::Document mem_key_list,imm_key_list,sst_key_list;
+    std::string mem_value,imm_value;
+    int kNoOfOutputs = options.num_records;
+    std::unordered_set<std::string> resultSetofKeysFound;
+    if(mem->Get(lkey, &mem_value, &s))
+    {
+        mem_key_list.Parse<0>(mem_value.c_str());
+        
+        //Perform Read Repair by Get(pKey) on memtable values
+    
+        int i = mem_key_list.Size() - 1;
+        while ( i >= 0) {
+            std::string pkey = GetVal(mem_key_list[i]);
+   
+            std::string delim = "+";
+            std::size_t found = pkey.find(delim);
+            
+            std::string pValue;
+            if (found!=std::string::npos)
+            {
+                char *pEnd;
+                uint64_t seqN =   std::strtoul(pkey.substr(0, found).c_str(), &pEnd, 0);;
+                pkey = pkey.substr(found+1);
+
+                struct RangeKeyValuePair newVal;;
+
+                newVal.key = pkey;//Slice(d);
+
+                //newVal.value = sval;//Slice(d2); 
+
+
+                newVal.sequence_number = seqN;
+                if(value_list->size()<kNoOfOutputs)
+                {
+                    if(resultSetofKeysFound.find(pkey)==resultSetofKeysFound.end())
+                    {
+                        Status db_status = db->Get(options, pkey, &pValue);
+                        newVal.value = pValue;
+
+                        // if there are no errors, push KV pair onto return vector, latest record first
+                        // check for updated values
+                        if (db_status.ok()&&!db_status.IsNotFound()) {
+                            rapidjson::Document temp_val;
+                            temp_val.Parse<0>(pValue.c_str());
+                            //outputFile<<pkey<<" -> "<<pValue<<"\n"<<skey.ToString()<<" == "<< GetAttr(temp_val, this->options_.secondary_key.c_str())<<"\n";
+                            if (skey.ToString() == GetAttr(temp_val, this->options_.secondary_key.c_str()))
+                            {
+                              newVal.Push(value_list, newVal);                             
+                              resultSetofKeysFound.insert(pkey);
+                               
+                            }
+                        }
+                    }
+                }
+                else if(newVal.sequence_number>value_list->front().sequence_number)
+                {
+                    
+                    if(resultSetofKeysFound.find(pkey)==resultSetofKeysFound.end())
+                    {
+                        Status db_status = db->Get(options, pkey, &pValue);
+                        newVal.value = pValue;
+
+                        // if there are no errors, push KV pair onto return vector, latest record first
+                        // check for updated values
+                        if (db_status.ok()&&!db_status.IsNotFound()) {
+                            rapidjson::Document temp_val;
+                            temp_val.Parse<0>(pValue.c_str());
+                            //outputFile<<pkey<<" -> "<<pValue<<"\n"<<skey.ToString()<<" == "<< GetAttr(temp_val, this->options_.secondary_key.c_str())<<"\n";
+                            if (skey.ToString() == GetAttr(temp_val, this->options_.secondary_key.c_str()))
+                            {
+                               newVal.Pop(value_list);
+                               newVal.Push(value_list, newVal);                             
+                               resultSetofKeysFound.insert(pkey);
+                               //resultSetofKeysFound.erase(resultSetofKeysFound.find(value_list->front().key));
+                               
+                               
+                            }
+                        }
+                    }
+                     
+                }
+                
+                
+                
+                
+                
+            }
+            
+            i--;
+        }
+    }
+     
+    
+    
+  
+    
+    if(imm != NULL) {
+      if(imm->Get(lkey, &imm_value, &s))
+      {
+       
+           imm_key_list.Parse<0>(imm_value.c_str());
+           
+           //Perform Read Repair by Get(pKey) on memtable values
+    
+            int i = imm_key_list.Size() - 1;
+            while ( i >= 0) {
+            std::string pkey = GetVal(imm_key_list[i]);
+   
+            std::string delim = "+";
+            std::size_t found = pkey.find(delim);
+            
+            std::string pValue;
+            if (found!=std::string::npos)
+            {
+                char *pEnd;
+                uint64_t seqN =   std::strtoul(pkey.substr(0, found).c_str(), &pEnd, 0);;
+                pkey = pkey.substr(found+1);
+
+                struct RangeKeyValuePair newVal;;
+
+                newVal.key = pkey;//Slice(d);
+
+                //newVal.value = sval;//Slice(d2); 
+
+
+                newVal.sequence_number = seqN;
+                if(value_list->size()<kNoOfOutputs)
+                {
+                    if(resultSetofKeysFound.find(pkey)==resultSetofKeysFound.end())
+                    {
+                        Status db_status = db->Get(options, pkey, &pValue);
+                        newVal.value = pValue;
+
+                        // if there are no errors, push KV pair onto return vector, latest record first
+                        // check for updated values
+                        if (db_status.ok()&&!db_status.IsNotFound()) {
+                            rapidjson::Document temp_val;
+                            temp_val.Parse<0>(pValue.c_str());
+                            //outputFile<<pkey<<" -> "<<pValue<<"\n"<<skey.ToString()<<" == "<< GetAttr(temp_val, this->options_.secondary_key.c_str())<<"\n";
+                            if (skey.ToString() == GetAttr(temp_val, this->options_.secondary_key.c_str()))
+                            {
+                              newVal.Push(value_list, newVal);                             
+                              resultSetofKeysFound.insert(pkey);
+                               
+                            }
+                        }
+                    }
+                }
+                else if(newVal.sequence_number>value_list->front().sequence_number)
+                {
+                    
+                    if(resultSetofKeysFound.find(pkey)==resultSetofKeysFound.end())
+                    {
+                        Status db_status = db->Get(options, pkey, &pValue);
+                        newVal.value = pValue;
+
+                        // if there are no errors, push KV pair onto return vector, latest record first
+                        // check for updated values
+                        if (db_status.ok()&&!db_status.IsNotFound()) {
+                            rapidjson::Document temp_val;
+                            temp_val.Parse<0>(pValue.c_str());
+                            //outputFile<<pkey<<" -> "<<pValue<<"\n"<<skey.ToString()<<" == "<< GetAttr(temp_val, this->options_.secondary_key.c_str())<<"\n";
+                            if (skey.ToString() == GetAttr(temp_val, this->options_.secondary_key.c_str()))
+                            {
+                               newVal.Pop(value_list);
+                               newVal.Push(value_list, newVal);                             
+                               resultSetofKeysFound.insert(pkey);
+                               //resultSetofKeysFound.erase(resultSetofKeysFound.find(value_list->front().key));
+                               
+                               
+                            }
+                        }
+                    }
+                     
+                }
+                
+                
+                
+                
+                
+            }
+            
+            i--;
+        }
+      }
+      
+    }  
+    
+
+     
+    s = current->RangeGet(options, lkey, value_list, &stats, this->options_.secondary_key, db,&resultSetofKeysFound);
+        //outputFile<<"in\n";
+     
+    mutex_.Lock();
+    //outputFile<<"in\n";
+  }
+
+  /*if (have_stat_update && current->UpdateStats(stats)) {
+    MaybeScheduleCompaction();
+  }*/
+  mem->Unref();
+  if (imm != NULL) imm->Unref();
+  //current->Unref();
+  //outputFile.close();
+  return s;
+ 
+ 
+}
+static bool NewestFirst(const leveldb::RangeKeyValuePair& a,const leveldb::RangeKeyValuePair& b)
+{
+   return a.sequence_number<b.sequence_number?false:true;
+}
+ 
+  // Lookup range query on secondary key
+  Status DBImpl::RangeLookUp(const ReadOptions& options,
+                   const Slice& startSkey, const Slice& endSkey,
+                   std::vector<RangeKeyValuePair>* value)
+  {
+      Status s;
+    //int kNoOfOutputs = options.num_records;
+    //std::ofstream outputFile;
+    //outputFile.open("/home/mohiuddin/Desktop/LevelDB_Correctness_Testing/Debug/lazy_debug_RangeLookUp.txt", std::ofstream::out | std::ofstream::app);
+    
+   // outputFile<<startSkey.ToString()<<"\n";  
+    
+      
+    Iterator* it = this->sdb->NewIterator( leveldb::ReadOptions());
+    for (it->Seek(startSkey); it->Valid(); it->Next()) 
+    {
+        
+        leveldb::Slice key = it->key();
+        //outputFile<<key.ToString()<<"\n";
+        if(this->options_.comparator->Compare(key, endSkey) > 0) 
+        {
+        // key > end
+            break;
+        
+        } 
+        else 
+        {
+            /**
+            * process (key, value)
+            */
+             
+             
+                
+           s = this->sdb->SRangeGet(options, key, value, this);
+         
+            
+
+        }
+    }
+    delete it;
+    std::sort_heap(value->begin(),value->end(),NewestFirst);
+    return s;
+    
+  }
 Status DBImpl::Write(const WriteOptions& options, WriteBatch* my_batch) {
   Writer w(&mutex_);
   w.batch = my_batch;
@@ -2010,7 +2331,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       log_ = new log::Writer(lfile);
       imm_ = mem_;
       has_imm_.Release_Store(imm_);
-      mem_ = new MemTable(internal_comparator_);
+      mem_ = new MemTable(internal_comparator_, options_.isSecondaryDB);
       mem_->Ref();
       force = false;   // Do not force another compaction if have room
       MaybeScheduleCompaction();

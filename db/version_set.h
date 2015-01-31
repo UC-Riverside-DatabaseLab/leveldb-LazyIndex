@@ -24,6 +24,7 @@
 #include "port/thread_annotations.h"
 #include "db/db_impl.h"
 #include <unordered_set>
+#include <sstream>
 
 namespace leveldb {
 
@@ -79,6 +80,10 @@ class Version {
   Status Get( const ReadOptions& options, const LookupKey&  key, std::vector<KeyValuePair>* value_list, GetStats* stats, 
                 std::string secKey,  int kNoOfOutputs, DB* db, std::unordered_set<std::string>* resultSetofKeysFound);
   
+  
+  //Range Lookup Get
+  Status RangeGet( const ReadOptions& options, const LookupKey&  key, std::vector<RangeKeyValuePair>* value_list, GetStats* stats, 
+                std::string secKey,   DB* db, std::unordered_set<std::string>* resultSetofKeysFound);
   
   
   

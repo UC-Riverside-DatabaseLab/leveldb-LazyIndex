@@ -18,6 +18,7 @@
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
 
+
 namespace leveldb {
 
 class MemTable;
@@ -54,6 +55,12 @@ class DBImpl : public DB {
 
   virtual Status SGet(const ReadOptions& options,
                      const Slice& key, std::vector<KeyValuePair>* value_list, DB* db);
+  // Lookup range query on secondary key
+  virtual Status RangeLookUp(const ReadOptions& options,
+                   const Slice& startSkey, const Slice& endSkey,
+                   std::vector<RangeKeyValuePair>* value);
+  virtual Status SRangeGet(const ReadOptions& options,
+                     const Slice& key, std::vector<RangeKeyValuePair>* value_list, DB* db);
   // Extra methods (for testing) that are not in the public DB interface
 
   // Compact any files in the named level that overlap [*begin,*end]

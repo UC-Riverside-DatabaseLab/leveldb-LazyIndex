@@ -197,7 +197,7 @@ class Repairer {
     std::string scratch;
     Slice record;
     WriteBatch batch;
-    MemTable* mem = new MemTable(icmp_);
+    MemTable* mem = new MemTable(icmp_, options_.isSecondaryDB);
     mem->Ref();
     int counter = 0;
     while (reader.ReadRecord(&record, &scratch)) {
