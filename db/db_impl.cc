@@ -1865,7 +1865,7 @@ Status DBImpl::SGet(const ReadOptions& options, const Slice& skey, std::vector<K
   }*/
   mem->Unref();
   if (imm != NULL) imm->Unref();
-  //current->Unref();
+  current->Unref();
   //outputFile.close();
   return s;
  
@@ -2108,7 +2108,7 @@ Status DBImpl::SRangeGet(const ReadOptions& options,
   }*/
   mem->Unref();
   if (imm != NULL) imm->Unref();
-  //current->Unref();
+  current->Unref();
   //outputFile.close();
   return s;
  
