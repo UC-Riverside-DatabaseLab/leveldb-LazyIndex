@@ -2138,7 +2138,7 @@ static bool NewestFirst(const leveldb::RangeKeyValuePair& a,const leveldb::Range
         
         leveldb::Slice key = it->key();
         //outputFile<<key.ToString()<<"\n";
-        if(this->options_.comparator->Compare(key, endSkey) > 0) 
+        if( key.ToString().compare(endSkey.ToString()) > 0) 
         {
         // key > end
             break;
