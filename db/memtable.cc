@@ -116,6 +116,47 @@ std::string M_GetVal(const rapidjson::Value& val) {
 
   return pKey.str();
 }
+std::string M_GetAttr(const rapidjson::Document& doc, const char* attr) {
+  if(!doc.IsObject() || !doc.HasMember(attr) || doc[attr].IsNull())
+    return "";
+
+  std::ostringstream pKey;
+
+  if(doc[attr].IsNumber()) {
+    if(doc[attr].IsUint64()) {
+      unsigned long long int tid = doc[attr].GetUint64();
+      pKey<<tid;
+    }
+    else if (doc[attr].IsInt64()) {
+      long long int tid = doc[attr].GetInt64();
+      pKey<<tid;
+    }
+    else if (doc[attr].IsDouble()) {
+      double tid = doc[attr].GetDouble();
+      pKey<<tid;
+    }
+    else if (doc[attr].IsUint()) {
+      unsigned int tid = doc[attr].GetUint();
+      pKey<<tid;
+    }
+    else if (doc[attr].IsInt()) {
+      int tid = doc[attr].GetInt();
+      pKey<<tid;
+    }
+  }
+  else if (doc[attr].IsString()) {
+    const char* tid = doc[attr].GetString();
+    pKey<<tid;
+  }
+  else if(doc[attr].IsBool()) {
+    bool tid = doc[attr].GetBool();
+    pKey<<tid;
+  }
+
+  return pKey.str();
+}
+
+
 void MemTable::Add(SequenceNumber s, ValueType type,
                    const Slice& key,
                    const Slice& rawvalue) {
@@ -203,12 +244,106 @@ void MemTable::Add(SequenceNumber s, ValueType type,
     assert((p + val_size) - buf == encoded_len);
     table_.Insert(buf);
   }
-  
-  
-  
-  
-  
-  
+}
+
+
+int MemTable::RangeGet(const LookupKey& startkey, std::string& endkey, std::vector<RangeKeyValuePair>* value_list, Status* s, std::string secAttribute, DB* db, int topk, std::unordered_set<std::string>* resultSetofKeysFound)
+{
+	Slice memkey = startkey.memtable_key();
+	Table::Iterator iter(&table_);
+	iter.Seek(memkey.data());
+	int resultCount = 0;
+	std::string prevseckey= "";
+	leveldb::ReadOptions roption;
+	for (; iter.Valid(); iter.Next())
+	{
+		const char* entry = iter.key();
+		uint32_t key_length;
+		const char* key_ptr = GetVarint32Ptr(entry, entry+5, &key_length);
+
+		std::string seckey = Slice(key_ptr, key_length - 8).ToString();
+
+		if(prevseckey == seckey)
+			continue;
+
+		prevseckey = seckey;
+
+		if( seckey.compare(endkey) > 0)
+		{
+		// key >= end
+		  break;
+
+		}
+
+		std::string val;
+		const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
+		switch (static_cast<ValueType>(tag & 0xff)) {
+			case kTypeValue: {
+				resultCount++;
+				Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
+				val.assign(v.data(), v.size());
+
+				rapidjson::Document key_list;
+
+				key_list.Parse<0>(val.c_str());
+				rapidjson::SizeType len = key_list.Size();
+				unsigned i = 0;
+
+				while (i < len )
+				{
+					std::string pkey = M_GetVal(key_list[i]);
+					i++;
+					//Add in result set
+					std::string pValue;
+					std::string delim = "+";
+					std::size_t found = pkey.find(delim);
+
+					if (found!=std::string::npos)
+					{
+						char *pEnd;
+						uint64_t seqN =   std::strtoul(pkey.substr(0, found).c_str(), &pEnd, 0);
+						pkey = pkey.substr(found+1);
+						struct RangeKeyValuePair newVal;;
+
+						newVal.key = pkey;
+						newVal.sequence_number = seqN;
+						int vsize = value_list->size();
+						if(vsize>=topk && seqN<value_list->front().sequence_number)
+							continue;
+
+						if(resultSetofKeysFound->find(pkey)==resultSetofKeysFound->end())
+						{
+
+							Status db_status = db->Get(roption, pkey, &pValue);
+							newVal.value = pValue;
+							// if there are no errors, push KV pair onto return vector, latest record first
+							// check for updated values
+							if (db_status.ok()&&!db_status.IsNotFound()) {
+								rapidjson::Document temp_val;
+								temp_val.Parse<0>(pValue.c_str());
+								//outputFile<<pkey<<" -> "<<pValue<<"\n"<<skey.ToString()<<" == "<< GetAttr(temp_val, this->options_.secondary_key.c_str())<<"\n";
+								if (seckey == M_GetAttr(temp_val, secAttribute.c_str()))
+								{
+									if(vsize>=topk)
+										newVal.Pop(value_list);
+									newVal.Push(value_list, newVal);
+									resultSetofKeysFound->insert(pkey);
+
+								}
+							}
+						}
+					}
+
+
+
+				}
+			}
+
+		}
+	}
+	//delete iter.;
+	return resultCount;
+
 }
 
 bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {

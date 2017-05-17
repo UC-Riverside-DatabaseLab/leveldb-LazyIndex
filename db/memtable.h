@@ -13,6 +13,7 @@
 #include "rapidjson/document.h"
 #include <sstream>
 #include <fstream>
+#include <unordered_set>
 
 #define SSTR( x ) dynamic_cast< std::ostringstream & >( \
         ( std::ostringstream() << std::dec << x ) ).str()
@@ -67,6 +68,8 @@ class MemTable {
   // in *status and return true.
   // Else, return false.
   bool Get(const LookupKey& key, std::string* value, Status* s);
+  int RangeGet(const LookupKey& startkey, std::string& endkey, std::vector<RangeKeyValuePair>* value_list, Status* s,
+		  std::string secAttribute, DB* db, int topk, std::unordered_set<std::string>* resultSetofKeysFound);
 
  private:
   ~MemTable();  // Private since only Unref() should be used to delete it

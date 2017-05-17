@@ -2081,11 +2081,6 @@ Status DBImpl::SRangeGet(const ReadOptions& options,
                     }
                      
                 }
-                
-                
-                
-                
-                
             }
             
             i--;
@@ -2125,44 +2120,100 @@ static bool NewestFirst(const leveldb::RangeKeyValuePair& a,const leveldb::Range
                    std::vector<RangeKeyValuePair>* value)
   {
       Status s;
-    //int kNoOfOutputs = options.num_records;
-    //std::ofstream outputFile;
-    //outputFile.open("/home/mohiuddin/Desktop/LevelDB_Correctness_Testing/Debug/lazy_debug_RangeLookUp.txt", std::ofstream::out | std::ofstream::app);
-    
-   // outputFile<<startSkey.ToString()<<"\n";  
-    
-      
-    Iterator* it = this->sdb->NewIterator( leveldb::ReadOptions());
-    for (it->Seek(startSkey); it->Valid(); it->Next()) 
-    {
-        
-        leveldb::Slice key = it->key();
-        //outputFile<<key.ToString()<<"\n";
-        if( key.ToString().compare(endSkey.ToString()) > 0) 
-        {
-        // key > end
-            break;
-        
-        } 
-        else 
-        {
-            /**
-            * process (key, value)
-            */
-             
-             
-                
-           s = this->sdb->SRangeGet(options, key, value, this);
-         
-            
+      s=this->sdb->RangeLookUpinSecTable(options, startSkey, endSkey, value, this);
 
-        }
-    }
-    delete it;
-    std::sort_heap(value->begin(),value->end(),NewestFirst);
+//
+//    Iterator* it = this->sdb->NewIterator( leveldb::ReadOptions());
+//    for (it->Seek(startSkey); it->Valid(); it->Next())
+//    {
+//
+//        leveldb::Slice key = it->key();
+//        //outputFile<<key.ToString()<<"\n";
+//        if( key.ToString().compare(endSkey.ToString()) > 0)
+//        {
+//        // key > end
+//            break;
+//
+//        }
+//        else
+//        {
+//            /**
+//            * process (key, value)
+//            */
+//
+//
+//
+//           s = this->sdb->SRangeGet(options, key, value, this);
+//
+//
+//
+//        }
+//    }
+//    delete it;
+//    std::sort_heap(value->begin(),value->end(),NewestFirst);
     return s;
-    
+
   }
+
+
+  Status DBImpl::RangeLookUpinSecTable(const ReadOptions& options,
+                     const Slice& startSkey, const Slice& endSkey,
+                     std::vector<RangeKeyValuePair>* value_list, DB* db)
+    {
+
+	  	  	Status s;
+        	//outputFile<<"innnn\n";
+	  	  	std::unordered_set<std::string> resultSetofKeysFound;
+        	MutexLock l(&mutex_);
+        	SequenceNumber snapshot;
+        	std::string endkey = endSkey.ToString();
+        	if (options.snapshot != NULL) {
+        	  snapshot = reinterpret_cast<const SnapshotImpl*>(options.snapshot)->number_;
+        	} else {
+        	  snapshot = versions_->LastSequence();
+        	}
+
+        	MemTable* mem = mem_;
+        	MemTable* imm = imm_;
+        	Version* current = versions_->current();
+        	mem->Ref();
+        	if (imm != NULL) imm->Ref();
+        	current->Ref();
+
+        	bool have_stat_update = false;
+			Version::GetStats stats;
+			{
+				mutex_.Unlock();
+
+				LookupKey lkey(startSkey, snapshot);
+
+
+				int res = mem->RangeGet(lkey, endkey, value_list, &s, this->options_.secondary_key, db, options.num_records, &resultSetofKeysFound );
+
+				//std::cout<< "Mem : " <<res<<std::endl;
+				if(imm!=NULL)
+				{
+					res = imm->RangeGet(lkey, endkey, value_list, &s, this->options_.secondary_key, db, options.num_records, &resultSetofKeysFound );
+
+
+					//std::cout<< "Imm : " <<res<<std::endl;
+				}
+
+				s = current->RangeGet(options, lkey, endkey, value_list, &stats, this->options_.secondary_key, db, &resultSetofKeysFound);
+
+				have_stat_update = true;
+
+				mutex_.Lock();
+
+			}
+
+        
+
+      return s;
+
+    }
+
+
 Status DBImpl::Write(const WriteOptions& options, WriteBatch* my_batch) {
   Writer w(&mutex_);
   w.batch = my_batch;

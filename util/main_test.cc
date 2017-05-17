@@ -16,6 +16,7 @@
 
 using namespace std;
 //NYTweetsUserIDRangerw19
+//Small-CreationTime-Write-Range3
 static string database = "/home/mohiuddin/Desktop/LevelDB_Correctness_Testing/DB/Embedded_Write_UserID_Sec100_K5";
 static string benchmark_file = "/home/mohiuddin/Desktop/LevelDB_Correctness_Testing/Benchmarks/Small-CreationTime-Write-Range3";
 static string result_file = "/home/mohiuddin/Desktop/LevelDB_Correctness_Testing/Results/Lazy_Write_UserID_Sec100_K5.csv";

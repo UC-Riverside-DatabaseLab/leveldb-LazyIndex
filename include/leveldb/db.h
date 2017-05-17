@@ -103,12 +103,16 @@ class DB {
                      const Slice& key, std::vector<KeyValuePair>* value_list, DB* db)=0;
     virtual Status SRangeGet(const ReadOptions& options,
                      const Slice& key, std::vector<RangeKeyValuePair>* value_list, DB* db)=0;
+
   
   // Lookup range query on secondary key
   virtual Status RangeLookUp(const ReadOptions& options,
                    const Slice& startSkey, const Slice& endSkey,
                    std::vector<RangeKeyValuePair>* value) = 0;
   
+  virtual Status RangeLookUpinSecTable(const ReadOptions& options,
+                       const Slice& startSkey, const Slice& endSkey,
+                       std::vector<RangeKeyValuePair>* value_list, DB* db) =0;
   // Set the database entry for "key" to "value".  Returns OK on success,
   // and a non-OK status on error.
   // Note: consider setting options.sync = true.

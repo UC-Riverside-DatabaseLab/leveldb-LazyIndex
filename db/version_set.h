@@ -85,7 +85,9 @@ class Version {
   Status RangeGet( const ReadOptions& options, const LookupKey&  key, std::vector<RangeKeyValuePair>* value_list, GetStats* stats, 
                 std::string secKey,   DB* db, std::unordered_set<std::string>* resultSetofKeysFound);
   
-  
+  Status RangeGet(const ReadOptions& options,
+                          const LookupKey& startkey, std::string& endkey, std::vector<RangeKeyValuePair>* value_list,  GetStats* stats,
+  						std::string secAttribute,   DB* db, std::unordered_set<std::string>* resultSetofKeysFound );
   
   // Adds "stats" into the current state.  Returns true if a new
   // compaction may need to be triggered, false otherwise.

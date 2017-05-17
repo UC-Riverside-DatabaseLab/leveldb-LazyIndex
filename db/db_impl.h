@@ -61,6 +61,9 @@ class DBImpl : public DB {
                    std::vector<RangeKeyValuePair>* value);
   virtual Status SRangeGet(const ReadOptions& options,
                      const Slice& key, std::vector<RangeKeyValuePair>* value_list, DB* db);
+  virtual Status RangeLookUpinSecTable(const ReadOptions& options,
+                     const Slice& startSkey, const Slice& endSkey,
+                     std::vector<RangeKeyValuePair>* value_list, DB* db);
   // Extra methods (for testing) that are not in the public DB interface
 
   // Compact any files in the named level that overlap [*begin,*end]
