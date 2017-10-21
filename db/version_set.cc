@@ -733,6 +733,8 @@ Status Version::Get( const ReadOptions& options, const LookupKey& k, std::vector
        
     }
      * */
+
+    tmp.clear();
   }
   
 
@@ -956,11 +958,11 @@ Status Version::RangeGet(const ReadOptions& options,
 
 
 
+		  tmp.clear();
+
 
 	  }
-
-
-		  //std::cout<<"Disk: "<<res<<std::endl;
+  //std::cout<<"Disk: "<<res<<std::endl;
 
 	return s;
 

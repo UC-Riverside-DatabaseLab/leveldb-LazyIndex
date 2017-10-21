@@ -32,7 +32,9 @@
 #include "util/coding.h"
 #include "util/logging.h"
 #include "util/mutexlock.h"
-
+#include "rapidjson/document.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 #include <string>
 #include <sstream>
 #include <fstream>
@@ -1672,7 +1674,7 @@ Status DBImpl::Put(const WriteOptions& options, const Slice& value) {
   Status sdb_status;
   std::string new_key_list = "[";
   new_key_list += ("\"" + pkey + "\"]");
-  std::ofstream outputFile;  
+  std::ofstream outputFile;
  outputFile.open("/home/mohiuddin/Desktop/LevelDB_Correctness_Testing/Debug/lazy_debug_RangeLookUp.txt", std::ofstream::out | std::ofstream::app);
     outputFile<<"put "<<skey << " "<<new_key_list<<"\n";
   Slice sk = skey;
@@ -2535,6 +2537,10 @@ Status DB::Open(const Options& options, const std::string& dbname,
     soption.primary_key = options.primary_key ;
     soption.secondary_key = options.secondary_key ;
     
+    soption.filter_policy = leveldb::NewBloomFilterPolicy(100);
+    soption.max_open_files = 15000;
+    soption.block_cache = leveldb::NewLRUCache(100 * 1048576);  // 100MB cache
+
     Status sstatus = DB::Open(soption, sdbname, &impl->sdb, *dbptr);
     
     // return any errors, secondary db errors first

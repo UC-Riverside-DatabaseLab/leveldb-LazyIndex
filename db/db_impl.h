@@ -4,9 +4,10 @@
 
 #ifndef STORAGE_LEVELDB_DB_DB_IMPL_H_
 #define STORAGE_LEVELDB_DB_DB_IMPL_H_
-
 #include <deque>
 #include <set>
+
+#include <iostream>
 #include "db/dbformat.h"
 #include "db/log_writer.h"
 #include "db/snapshot.h"
@@ -14,10 +15,8 @@
 #include "leveldb/env.h"
 #include "port/port.h"
 #include "port/thread_annotations.h"
-#include "rapidjson/document.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
 
+#include <fstream>
 
 namespace leveldb {
 
@@ -26,6 +25,83 @@ class TableCache;
 class Version;
 class VersionEdit;
 class VersionSet;
+
+class IOStat {
+public:
+  uint64_t numberofIO;
+  uint64_t cachehit;
+
+  IOStat()
+  {
+	  clear();
+  }
+  void clear()
+  {
+	  numberofIO = 0;
+	  cachehit = 0;
+
+  }
+
+  void update(IOStat& newstat)
+  {
+	  numberofIO+=newstat.numberofIO;
+	  cachehit+=newstat.cachehit;
+
+  }
+  void print()
+  {
+	  //std::cout<<"asdasd";
+	  std::cout<<"IO: "<<this->numberofIO<<std::endl;
+	  std::cout<<"Cache Hit: "<<this->cachehit<<std::endl;
+
+
+  }
+  void print(uint64_t numberofop)
+	{
+	  //uint64_t p = 10;
+	  //std::cout<<numberofop/p<<std::endl;
+	  std::cout<<"Total IO: "<<this->numberofIO<<std::endl;
+	  std::cout<<"Avg IO: "<<((double)this->numberofIO/numberofop)<<std::endl;
+	  if(numberofIO>0)
+	  {
+		  double s = (double)cachehit/numberofIO*100.0;
+		  std::cout<<"Cache Hit%: "<<s<<std::endl;
+	  }
+	  else
+		  std::cout<<"Cache Hit%: 0"<<std::endl;
+	  }
+
+    void print(uint64_t numberofop, std::ofstream& ofile, const char *type)
+  	{
+  	  //uint64_t p = 10;
+  	  //std::cout<<numberofop/p<<std::endl;
+    	ofile<< std::fixed;
+    	ofile.precision(3);
+	  if(numberofop==0)
+		  ofile<<"Op Type, Total IO, Avg IO, Cache Hit%\n";
+	  else
+	  {
+		 ofile<<type<<",";
+		 ofile<<this->numberofIO<< "," ;
+
+		 ofile<<((double)this->numberofIO/numberofop)<<"," ;
+
+		  if(numberofIO>0)
+		  {
+			  double s = (double)cachehit/numberofIO*100.0;
+
+			  ofile<<s ;
+		  }
+		  else
+			 ofile<<"0";
+
+		  ofile<<std::endl;
+	  }
+  	}
+
+};
+
+
 
 class DBImpl : public DB {
  public:

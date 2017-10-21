@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 #include "leveldb/iterator.h"
+#include "db/db_impl.h"
 
 namespace leveldb {
 
@@ -17,6 +18,12 @@ struct Options;
 class RandomAccessFile;
 struct ReadOptions;
 class TableCache;
+class IOStat;
+
+extern IOStat pr_iostat;
+extern IOStat sr_iostat;
+extern IOStat sr_range_iostat;
+extern IOStat w_iostat;
 
 // A Table is a sorted map from strings to strings.  Tables are
 // immutable and persistent.  A Table may be safely accessed from
